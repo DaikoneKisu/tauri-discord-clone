@@ -231,13 +231,24 @@ jobs:
         run: |
           sdkmanager --install "ndk;29.0.14206865"
           NDK="$ANDROID_HOME/ndk/29.0.14206865"
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
           # Both names are needed, and they are not interchangeable: Tauri's
           # CLI reads NDK_HOME, webrtc-sys's build.rs reads ANDROID_NDK_HOME
           # and panics with "Android NDK not found" if only the former is set.
           echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
           # The NDK ships clang 21, which is exactly what webrtc-sys requires.
-          echo "LIBCLANG_PATH=$NDK/toolchains/llvm/prebuilt/linux-x86_64/lib" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$TC/lib" >> "$GITHUB_ENV"
+
+          # `tauri android build` wires the cross toolchain up for you; a raw
+          # `cargo build --target` does not. cc-rs then looks for an unsuffixed
+          # `aarch64-linux-android-clang++`, which the NDK does not ship — its
+          # wrappers are versioned by API level, and 24 is our minSdk.
+          echo "$TC/bin" >> "$GITHUB_PATH"
+          echo "CC_aarch64_linux_android=$TC/bin/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+          echo "CXX_aarch64_linux_android=$TC/bin/aarch64-linux-android24-clang++" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$TC/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TC/bin/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         with:

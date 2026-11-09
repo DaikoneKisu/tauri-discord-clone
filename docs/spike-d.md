@@ -92,15 +92,54 @@ The prebuilt Android artifact did download
 (`android-arm64-release-webrtc-a545de4` appears in the emitted
 `rustc-link-search`), so artifact resolution for the target works.
 
-## Results
+## Finding 3 — a raw `cargo build --target` does not configure the Android toolchain
 
-| Target | Status | Time | Notes |
+With `ANDROID_NDK_HOME` set, webrtc-sys got past the NDK lookup and failed
+further in, inside cc-rs:
+
+```
+error occurred in cc-rs: failed to find tool "aarch64-linux-android-clang++"
+```
+
+cc-rs looks for an unsuffixed wrapper. The NDK only ships wrappers versioned
+by API level (`aarch64-linux-android24-clang++`, matching our `minSdk`), and
+its `bin` directory is not on `PATH`.
+
+`tauri android build` wires all of this up itself, which is why the local runs
+never hit it — only CI, which calls cargo directly for the `--lib` check. The
+job now exports `CC_`, `CXX_`, `AR_` and
+`CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` for the target explicitly.
+
+## Results — all five native targets build
+
+| Target | Status | Where | Notes |
 |---|---|---|---|
-| `x86_64-pc-windows-msvc` | ✅ builds and links | 481 s cold | with short `CARGO_TARGET_DIR` |
-| `aarch64-linux-android` | ⚠️ blocked on env, not retried | 512 s to failure | needs `ANDROID_NDK_HOME`; C++ compile still unproven |
-| `x86_64-unknown-linux-gnu` | not run | — | needs clang 21+; Ubuntu 24.04 in CI |
-| `aarch64-apple-darwin` | not run | — | CI only |
-| `aarch64-apple-ios` | not run | — | CI only |
+| `x86_64-pc-windows-msvc` | ✅ builds and links | local + CI | locally needs a short `CARGO_TARGET_DIR` |
+| `aarch64-apple-darwin` | ✅ builds and links | CI | confirms the `-ObjC` rustflag |
+| `aarch64-apple-ios` | ✅ builds | CI | staticlib for device |
+| `x86_64-unknown-linux-gnu` | ✅ builds and links | CI | clang 21 from apt.llvm.org on Ubuntu 24.04 |
+| `aarch64-linux-android` | ✅ builds | CI | needs the cross toolchain exported, see finding 3 |
+
+**Verdict: LiveKit stands.** Nothing in the build story rules it out, and every
+failure along the way was environment setup rather than the dependency itself.
+
+### What it costs
+
+| | Baseline | With `native-rtc` |
+|---|---:|---:|
+| `harmony.exe` (dev) | 14 MB | **34 MB** |
+| cold build, Windows | 2m14s | **8m01s** |
+| `target/` per platform | ~0.6 GB | **4.6–5.9 GB** |
+
+The per-target disk figure is the one that bites: a machine building two
+targets locally needs well over 10 GB free. CI caching via `Swatinem/rust-cache`
+absorbs the rebuild cost but not the disk.
+
+## Still open — `panic = "abort"`
+
+`Cargo.toml` sets `panic = "abort"` for the release profile, and every build
+here used the dev profile. `cxx` and libwebrtc may need unwinding. A release
+build still has to pass before the native pipeline is built on top of this.
 
 ### Size cost on Windows (dev profile)
 

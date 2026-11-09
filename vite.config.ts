@@ -15,7 +15,13 @@ const buildTarget =
       ? "chrome105"
       : "safari13";
 
+// GitHub Pages serves project sites from a subpath, so assets must be
+// requested as /tauri-discord-clone/assets/… there. Every other build — Tauri
+// on all five native targets, and `pnpm dev` — serves from the root.
+const base = process.env.PAGES_BASE ?? "/";
+
 export default defineConfig({
+  base,
   plugins: [react()],
 
   // Tauri's CLI owns the terminal output; don't let Vite wipe it.

@@ -1,0 +1,37 @@
+[package]
+name = "harmony"
+version = "0.1.0"
+description = "A Discord clone built with Tauri"
+authors = ["DaikoneKisu"]
+edition = "2021"
+rust-version = "1.90"
+
+[lib]
+# `staticlib` is required for iOS and `cdylib` for Android. Removing either
+# breaks the corresponding mobile target.
+name = "harmony_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+# tauri-build versions independently of tauri; 2.7 is the current 2.x line.
+tauri-build = { version = "2.7", features = [] }
+
+[features]
+default = []
+# Spike D: links the LiveKit client, and through it libwebrtc. Heavy enough to
+# be worth gating — it roughly doubles cold build time and target/ size — so
+# the scaffold stays fast until the native pipeline is real.
+native-rtc = ["dep:livekit"]
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+livekit = { version = "0.10", optional = true }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

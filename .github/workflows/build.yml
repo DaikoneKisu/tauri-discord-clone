@@ -3,9 +3,15 @@ name: build
 on:
   # Only main on push. Topic branches are validated through pull_request, so
   # pushing a branch that also targets main does not run the matrix twice.
+  #
+  # paths-ignore matters more than it looks: combined with cancel-in-progress
+  # below, a docs-only commit would otherwise cancel a running matrix and
+  # start eleven fresh jobs to rebuild nothing.
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**", ".gitattributes"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", ".gitattributes"]
   workflow_dispatch:
 
 concurrency:
@@ -97,7 +103,12 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # `packages: ''` is required: the action's default list includes `tools`,
+      # which Google retired, and one missing package fails the whole action.
+      # Everything needed is installed explicitly in the next step anyway.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ""
 
       # Android moved to minor-versioned platforms: the package for API 37 is
       # `platforms;android-37.0`, not `platforms;android-37`. Asking for the
@@ -209,22 +220,41 @@ jobs:
           sudo ./llvm.sh 21
           sudo apt-get install -y \
             libglib2.0-dev build-essential libclang-dev libc6-dev \
-            pkg-config libjpeg-turbo8-dev lld
+            pkg-config libjpeg-turbo8-dev lld \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
           echo "CC=clang-21" >> "$GITHUB_ENV"
           echo "CXX=clang++-21" >> "$GITHUB_ENV"
+
+      # Puts sdkmanager on PATH; the runner image does not. See the note in the
+      # `android` job about `packages: ''`.
+      - uses: android-actions/setup-android@v3
+        if: matrix.label == 'android'
+        with:
+          packages: ""
 
       - name: Install the NDK
         if: matrix.label == 'android'
         run: |
           sdkmanager --install "ndk;29.0.14206865"
           NDK="$ANDROID_HOME/ndk/29.0.14206865"
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
           # Both names are needed, and they are not interchangeable: Tauri's
           # CLI reads NDK_HOME, webrtc-sys's build.rs reads ANDROID_NDK_HOME
           # and panics with "Android NDK not found" if only the former is set.
           echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
           # The NDK ships clang 21, which is exactly what webrtc-sys requires.
-          echo "LIBCLANG_PATH=$NDK/toolchains/llvm/prebuilt/linux-x86_64/lib" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$TC/lib" >> "$GITHUB_ENV"
+
+          # `tauri android build` wires the cross toolchain up for you; a raw
+          # `cargo build --target` does not. cc-rs then looks for an unsuffixed
+          # `aarch64-linux-android-clang++`, which the NDK does not ship — its
+          # wrappers are versioned by API level, and 24 is our minSdk.
+          echo "$TC/bin" >> "$GITHUB_PATH"
+          echo "CC_aarch64_linux_android=$TC/bin/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
+          echo "CXX_aarch64_linux_android=$TC/bin/aarch64-linux-android24-clang++" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=$TC/bin/llvm-ar" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TC/bin/aarch64-linux-android24-clang" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -243,3 +273,48 @@ jobs:
         working-directory: src-tauri
         shell: bash
         run: du -sh target 2>/dev/null || true
+
+  # Every spike-d build uses the dev profile, so `panic = "abort"` and `lto`
+  # in the release profile go untested there. Settle it before the native
+  # pipeline is built on top: with abort, a panic in any tokio task takes the
+  # whole process down instead of failing one call.
+  release-profile:
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang 21 and build deps
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y \
+            libglib2.0-dev build-essential libclang-dev libc6-dev \
+            pkg-config libjpeg-turbo8-dev lld \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+          echo "CC=clang-21" >> "$GITHUB_ENV"
+          echo "CXX=clang++-21" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: release-profile
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Release build with the native RTC stack linked
+        working-directory: src-tauri
+        run: cargo build --release --features native-rtc
+
+      - name: Report binary size
+        if: always()
+        working-directory: src-tauri
+        run: ls -lh target/release/harmony 2>/dev/null || true

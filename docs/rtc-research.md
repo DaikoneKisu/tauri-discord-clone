@@ -117,11 +117,14 @@ macOS, Windows.Graphics.Capture on Windows, PipeWire on Linux).
 | **A** | LiveKit end-to-end on web | signalling, room model, the whole web target | two Chrome tabs in one room, audio + video both ways |
 | **B** | Rust native client | the real risk: libwebrtc + cpal + APM | the Windows binary joins Spike A's room and is audible, with no echo on open speakers |
 | **C** | video transport to the webview | the open problem above | latency/CPU/RAM table for C1–C3 at 1×720p30 and 4×360p30 |
-| **D** | build matrix with `livekit` linked | whether mobile is practical at all | all five native targets compile in CI |
+| ~~**D**~~ | ~~build matrix with `livekit` linked~~ | ~~whether mobile is practical at all~~ | ✅ **done — all five build**, see [`spike-d.md`](spike-d.md) |
 
-Run A first — it is the cheapest and closes a whole target. Run D early despite
-the tedium: **it is the spike that can invalidate the LiveKit decision**, and
-finding that out after Spike B would be expensive.
+Spike D ran first, before anything depended on its answer, because it was the
+one that could invalidate LiveKit. It did not: Windows, macOS, iOS, Linux and
+Android all build with libwebrtc linked. The cost is ~20 MB on the binary and
+~5 GB of `target/` per platform.
+
+Run A next — it is the cheapest and closes the web target entirely.
 
 ## Sources
 

@@ -97,7 +97,12 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # `packages: ''` is required: the action's default list includes `tools`,
+      # which Google retired, and one missing package fails the whole action.
+      # Everything needed is installed explicitly in the next step anyway.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ""
 
       # Android moved to minor-versioned platforms: the package for API 37 is
       # `platforms;android-37.0`, not `platforms;android-37`. Asking for the
@@ -212,6 +217,13 @@ jobs:
             pkg-config libjpeg-turbo8-dev lld
           echo "CC=clang-21" >> "$GITHUB_ENV"
           echo "CXX=clang++-21" >> "$GITHUB_ENV"
+
+      # Puts sdkmanager on PATH; the runner image does not. See the note in the
+      # `android` job about `packages: ''`.
+      - uses: android-actions/setup-android@v3
+        if: matrix.label == 'android'
+        with:
+          packages: ""
 
       - name: Install the NDK
         if: matrix.label == 'android'

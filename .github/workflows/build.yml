@@ -3,9 +3,15 @@ name: build
 on:
   # Only main on push. Topic branches are validated through pull_request, so
   # pushing a branch that also targets main does not run the matrix twice.
+  #
+  # paths-ignore matters more than it looks: combined with cancel-in-progress
+  # below, a docs-only commit would otherwise cancel a running matrix and
+  # start eleven fresh jobs to rebuild nothing.
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**", ".gitattributes"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", ".gitattributes"]
   workflow_dispatch:
 
 concurrency:

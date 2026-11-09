@@ -1,0 +1,53 @@
+name: pages
+
+# Deploys the web target to GitHub Pages. No Rust involved: the web build is
+# the same SPA the native shells load, minus the Tauri runtime.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", ".gitattributes"]
+  workflow_dispatch:
+
+# Required by actions/deploy-pages, which authenticates over OIDC rather than
+# a token we have to store.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy midway; queue instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build for the Pages subpath
+        env:
+          PAGES_BASE: /${{ github.event.repository.name }}/
+        run: pnpm build
+
+      # The SPA has no client-side router yet. When it gets one, Pages will
+      # 404 on deep links unless index.html is also served as 404.html.
+      - run: cp dist/index.html dist/404.html
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4

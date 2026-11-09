@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "Desktop-only permissions. The updater plugin does not exist on mobile, so requesting its permissions in the shared capability would fail the Android and iOS builds.",
+  "platforms": ["macOS", "windows", "linux"],
+  "windows": ["main"],
+  "permissions": ["updater:default"]
+}

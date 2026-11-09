@@ -29,6 +29,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 livekit = { version = "0.10", optional = true }
 
+# Desktop only — there is no updater on Android or iOS, where the store or
+# the package manager owns updates.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+
 [profile.release]
 codegen-units = 1
 lto = true

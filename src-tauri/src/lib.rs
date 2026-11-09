@@ -8,7 +8,13 @@ mod rtc;
 /// `main.rs`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // Mobile updates come from the store, so the plugin is desktop-only.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .invoke_handler(tauri::generate_handler![rtc::rtc_backend_info])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

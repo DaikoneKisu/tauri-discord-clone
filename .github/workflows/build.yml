@@ -273,3 +273,48 @@ jobs:
         working-directory: src-tauri
         shell: bash
         run: du -sh target 2>/dev/null || true
+
+  # Every spike-d build uses the dev profile, so `panic = "abort"` and `lto`
+  # in the release profile go untested there. Settle it before the native
+  # pipeline is built on top: with abort, a panic in any tokio task takes the
+  # whole process down instead of failing one call.
+  release-profile:
+    continue-on-error: true
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang 21 and build deps
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y \
+            libglib2.0-dev build-essential libclang-dev libc6-dev \
+            pkg-config libjpeg-turbo8-dev lld \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+          echo "CC=clang-21" >> "$GITHUB_ENV"
+          echo "CXX=clang++-21" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: release-profile
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Release build with the native RTC stack linked
+        working-directory: src-tauri
+        run: cargo build --release --features native-rtc
+
+      - name: Report binary size
+        if: always()
+        working-directory: src-tauri
+        run: ls -lh target/release/harmony 2>/dev/null || true

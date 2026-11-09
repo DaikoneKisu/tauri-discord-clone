@@ -135,11 +135,20 @@ The per-target disk figure is the one that bites: a machine building two
 targets locally needs well over 10 GB free. CI caching via `Swatinem/rust-cache`
 absorbs the rebuild cost but not the disk.
 
-## Still open — `panic = "abort"`
+## Settled — the release profile is fine
 
-`Cargo.toml` sets `panic = "abort"` for the release profile, and every build
-here used the dev profile. `cxx` and libwebrtc may need unwinding. A release
-build still has to pass before the native pipeline is built on top of this.
+`panic = "abort"` and `lto = true` build cleanly with the native stack linked.
+libwebrtc ships compiled with `-D_HAS_EXCEPTIONS=0`, so there is no C++
+unwinding to interfere with in the first place.
+
+The stripped release binary is **3.5 MB** — against 34 MB unstripped in dev.
+Linking libwebrtc costs far less than the dev-profile figure suggests.
+
+One behavioural consequence to keep in mind rather than a build problem: under
+`abort`, a panic in any tokio task takes the whole process down instead of
+failing a single call. For a voice app that turns a malformed packet into a
+closed window. If that trade stops being worth a few hundred KB, the flag is
+ours to drop — Tauri does not require it.
 
 ### Size cost on Windows (dev profile)
 

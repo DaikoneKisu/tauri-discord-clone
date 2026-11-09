@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged into the generated Info.plist on both macOS and iOS.
+
+  Without NSMicrophoneUsageDescription macOS TCC denies the microphone with no
+  prompt at all, so the failure looks like a bug in our code rather than a
+  missing permission. The entitlement in Entitlements.plist is the other half
+  of this: both are required under the hardened runtime.
+-->
+<plist version="1.0">
+  <dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Harmony needs your microphone so you can talk in voice channels.</string>
+
+    <key>NSCameraUsageDescription</key>
+    <string>Harmony needs your camera so you can turn on video in a call.</string>
+  </dict>
+</plist>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS code-signing entitlements, wired up via bundle.macOS.entitlements.
+
+  Under the hardened runtime, requestAccessForMediaType is refused outright
+  without these and the app never even appears in System Settings > Privacy.
+  Screen recording deliberately has no entitlement: macOS grants it through
+  the TCC prompt at first capture.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <key>com.apple.security.device.camera</key>
+    <true/>
+
+    <key>com.apple.security.network.client</key>
+    <true/>
+  </dict>
+</plist>

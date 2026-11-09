@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  iOS-only additions, merged on top of Info.plist by `tauri ios build`.
+
+  `audio` in UIBackgroundModes is what keeps a voice channel alive when the
+  app is backgrounded; without it iOS suspends the process and the call drops.
+-->
+<plist version="1.0">
+  <dict>
+    <key>UIBackgroundModes</key>
+    <array>
+      <string>audio</string>
+      <string>voip</string>
+    </array>
+
+    <!-- mDNS ICE candidates and LAN-hosted dev servers both need this. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Harmony uses the local network to connect calls directly when possible.</string>
+  </dict>
+</plist>

@@ -239,10 +239,74 @@ button {
   color: var(--text-dim);
 }
 
+.voice__dot--live {
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgb(75 191 115 / 0.25);
+}
+
+.voice__participants {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.voice__participant {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-left: 2px solid transparent;
+}
+
+.voice__participant.is-speaking {
+  color: var(--text);
+  border-left-color: var(--ok);
+  background: rgb(75 191 115 / 0.08);
+}
+
+.voice__participant-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice__muted {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.voice__join {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 0;
+  border-radius: 6px;
+  background: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.voice__join:hover:not(:disabled) {
+  background: var(--accent-dim);
+}
+
+.voice__join.is-connected {
+  background: var(--danger);
+}
+
+.voice__join:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .voice__controls {
   display: flex;
   gap: 6px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .voice__btn {

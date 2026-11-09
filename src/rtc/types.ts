@@ -76,10 +76,10 @@ export interface RtcCapabilities {
 }
 
 export interface ConnectOptions {
-  /** LiveKit server URL, e.g. ws://127.0.0.1:7880 */
-  url: string;
-  /** Short-lived access token minted by our backend. */
-  token: string;
+  /** Voice channel to join. Becomes the room name on the server. */
+  channel: string;
+  /** Name the other participants see. */
+  displayName: string;
 }
 
 export interface RtcError {

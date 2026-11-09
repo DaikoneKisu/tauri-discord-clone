@@ -16,6 +16,14 @@ export function ChannelSidebar({
 }: Props) {
   const guild = guilds.find((g) => g.id === guildId);
 
+  // Joining is scoped to a voice channel. If the user is browsing a text
+  // channel, offer the first voice one rather than nothing at all.
+  const selected = channels.find((c) => c.id === selectedChannel);
+  const voiceChannel =
+    selected?.kind === "voice"
+      ? selected.name
+      : (channels.find((c) => c.kind === "voice")?.name ?? "General");
+
   return (
     <div className="sidebar">
       <header className="sidebar__header">{guild?.name ?? "Servidor"}</header>
@@ -45,7 +53,7 @@ export function ChannelSidebar({
         ))}
       </div>
 
-      <VoicePanel />
+      <VoicePanel channel={voiceChannel} />
     </div>
   );
 }

@@ -1,0 +1,243 @@
+name: build
+
+on:
+  push:
+    branches: [main, "DaikoneKisu/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The `web` target: no Rust involved, just the SPA.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: dist
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows
+          - os: macos-latest
+            label: macos
+          # 22.04 keeps the AppImage's glibc floor low enough to be portable.
+          - os: ubuntu-22.04
+            label: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: matrix.label == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            build-essential \
+            patchelf \
+            file \
+            wget
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: ${{ matrix.label }}
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.label }}
+          path: |
+            src-tauri/target/release/bundle/**/*
+          if-no-files-found: warn
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri 2.12's Android template uses Gradle 9 + Kotlin 2, which needs a
+      # modern JDK. Java 8 or 11 fails during the Gradle configuration phase.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      # Android moved to minor-versioned platforms: the package for API 37 is
+      # `platforms;android-37.0`, not `platforms;android-37`. Asking for the
+      # latter fails the whole sdkmanager invocation, not just that package.
+      - name: Install the SDK platform and NDK
+        run: |
+          sdkmanager --install \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0" \
+            "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: android
+
+      - run: pnpm install --frozen-lockfile
+
+      # `gen/android` is committed, so init only fills gaps. Regenerating is
+      # safe: Tauri preserves manual edits to the manifest it did not author.
+      - run: pnpm tauri android init --skip-targets-install
+      - run: pnpm tauri android build --debug --apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: warn
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: brew install cocoapods
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: ios
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm tauri ios init --skip-targets-install
+
+      # Stops short of a signed .ipa, which needs an Apple developer account.
+      # Compiling the staticlib is what actually de-risks the iOS target: it is
+      # where a heavy native dependency (libwebrtc, in Spike B) would break.
+      - name: Compile the Rust staticlib for device and simulator
+        working-directory: src-tauri
+        run: |
+          cargo build --lib --target aarch64-apple-ios
+          cargo build --lib --target aarch64-apple-ios-sim
+
+  # Spike D: does the LiveKit client (and libwebrtc under it) build for every
+  # native target? This is the spike that can invalidate the LiveKit decision,
+  # so it runs separately and is allowed to fail without blocking the others.
+  spike-d-native-rtc:
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows
+            args: ""
+          # 24.04, not 22.04: webrtc-sys needs clang 21+ and the LLVM apt repo
+          # does not publish 21 for jammy.
+          - os: ubuntu-24.04
+            label: linux
+            args: ""
+          - os: macos-latest
+            label: macos
+            args: ""
+          - os: ubuntu-24.04
+            label: android
+            args: "--target aarch64-linux-android --lib"
+          - os: macos-latest
+            label: ios
+            args: "--target aarch64-apple-ios --lib"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang 21 and media build deps
+        if: matrix.label == 'linux'
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21
+          sudo apt-get install -y \
+            libglib2.0-dev build-essential libclang-dev libc6-dev \
+            pkg-config libjpeg-turbo8-dev lld
+          echo "CC=clang-21" >> "$GITHUB_ENV"
+          echo "CXX=clang++-21" >> "$GITHUB_ENV"
+
+      - name: Install the NDK
+        if: matrix.label == 'android'
+        run: |
+          sdkmanager --install "ndk;29.0.14206865"
+          NDK="$ANDROID_HOME/ndk/29.0.14206865"
+          # Both names are needed, and they are not interchangeable: Tauri's
+          # CLI reads NDK_HOME, webrtc-sys's build.rs reads ANDROID_NDK_HOME
+          # and panics with "Android NDK not found" if only the former is set.
+          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          # The NDK ships clang 21, which is exactly what webrtc-sys requires.
+          echo "LIBCLANG_PATH=$NDK/toolchains/llvm/prebuilt/linux-x86_64/lib" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: spike-d-${{ matrix.label }}
+
+      - name: Build with the native RTC stack linked
+        working-directory: src-tauri
+        run: cargo build --features native-rtc ${{ matrix.args }}
+
+      - name: Report size
+        if: always()
+        working-directory: src-tauri
+        shell: bash
+        run: du -sh target 2>/dev/null || true

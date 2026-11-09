@@ -1,0 +1,18 @@
+# LiveKit SFU for local development (Spike A).
+#
+# `--dev` starts the server with the well-known credentials devkey/secret and
+# no TLS. That is fine on localhost and nowhere else — a real deployment needs
+# generated keys, a config file and TLS in front of the signalling port.
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --dev --bind 0.0.0.0
+    network_mode: host
+    restart: unless-stopped
+    ports:
+      - "7880:7880" # signalling (WebSocket + HTTP)
+      - "7881:7881" # TURN/TCP fallback for restrictive networks
+      - "7882:7882/udp" # RTC media — the one that actually carries audio
+    # Host networking is the simplest way to let ICE see real host addresses.
+    # On Docker Desktop (Windows/macOS) host mode is limited: drop
+    # `network_mode` there and rely on the published ports above.

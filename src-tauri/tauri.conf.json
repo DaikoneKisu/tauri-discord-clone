@@ -44,7 +44,6 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
     "category": "SocialNetworking",
     "shortDescription": "A Discord clone built with Tauri",
     "icon": [

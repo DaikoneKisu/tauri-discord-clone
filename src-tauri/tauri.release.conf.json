@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "_comment": [
+    "Merged in only by the release workflow, via --config.",
+    "createUpdaterArtifacts makes every `tauri build` emit a signed update",
+    "bundle, which then demands TAURI_SIGNING_PRIVATE_KEY. CI's verification",
+    "builds have no business holding the signing key, so the flag cannot live",
+    "in the base config.",
+    "Not named tauri.<platform>.conf.json on purpose: those are auto-merged."
+  ],
+  "bundle": {
+    "createUpdaterArtifacts": true
+  }
+}

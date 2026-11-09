@@ -84,7 +84,10 @@ jobs:
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          # Turns on createUpdaterArtifacts here only. Keeping it out of the
+          # base config is what lets CI's verification builds run without the
+          # signing key.
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
   android:
     runs-on: ubuntu-latest

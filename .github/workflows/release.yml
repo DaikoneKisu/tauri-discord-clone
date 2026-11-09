@@ -1,0 +1,141 @@
+name: release
+
+# Tag-driven. `git tag v0.2.0 && git push --tags` publishes a draft release
+# with installers for every desktop platform plus an Android APK.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build (must already exist)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple silicon and Intel are separate bundles; a universal binary
+          # would double the download for everyone.
+          - os: macos-latest
+            args: "--target aarch64-apple-darwin"
+            label: macos-arm64
+          - os: macos-latest
+            args: "--target x86_64-apple-darwin"
+            label: macos-x64
+          - os: ubuntu-22.04
+            args: ""
+            label: linux-x64
+          - os: windows-latest
+            args: ""
+            label: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install Linux system dependencies
+        if: matrix.label == 'linux-x64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libssl-dev build-essential patchelf file wget
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: release-${{ matrix.label }}
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # Empty on purpose: the key was generated without a passphrase, and
+          # an empty string is not worth storing as a secret.
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: Harmony __VERSION__
+          releaseBody: |
+            Desktop installers and an Android APK.
+
+            Nothing here is code-signed yet, so Windows SmartScreen and macOS
+            Gatekeeper will warn on first launch. See the README.
+          # Draft so the release can be reviewed before anyone's updater sees
+          # it — `latest.json` goes live the moment it is published.
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+
+      - name: Install the SDK platform and NDK
+        run: |
+          sdkmanager --install \
+            "platforms;android-37.0" \
+            "build-tools;37.0.0" \
+            "ndk;29.0.14206865"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          key: release-android
+
+      - run: pnpm install --frozen-lockfile
+
+      # Unsigned: a release APK needs an upload keystore, which belongs to
+      # whoever owns the Play listing. Debug installs on any device.
+      - run: pnpm tauri android build --debug --apk
+
+      - name: Attach the APK to the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          gh release upload "$TAG" \
+            src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk \
+            --clobber

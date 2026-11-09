@@ -1,0 +1,20 @@
+# Normalise text to LF in the repository.
+* text=auto
+
+# Shell scripts must keep LF even when checked out on Windows: the Linux CI
+# runner executes gradlew, and CRLF there fails with a confusing
+# "bad interpreter" error.
+*.sh text eol=lf
+gradlew text eol=lf
+
+# Windows-only scripts stay CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+gradlew.bat text eol=crlf
+
+# Never let autocrlf touch binaries.
+*.png binary
+*.ico binary
+*.icns binary
+*.jar binary
+*.keystore binary

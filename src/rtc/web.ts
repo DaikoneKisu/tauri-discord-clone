@@ -9,6 +9,7 @@ import {
   ConnectionState as LKConnectionState,
   Room,
   RoomEvent,
+  TokenSource,
   Track,
   type Participant as LKParticipant,
   type TrackPublication,
@@ -157,9 +158,32 @@ export class WebRtcClient implements RtcClient {
     };
   }
 
-  async connect({ url, token }: ConnectOptions): Promise<void> {
+  async connect({ channel, displayName }: ConnectOptions): Promise<void> {
+    const tokenServerId = import.meta.env.VITE_LIVEKIT_TOKEN_SERVER_ID;
+    if (!tokenServerId) {
+      const message =
+        "VITE_LIVEKIT_TOKEN_SERVER_ID is not set — copy .env.example to .env.local.";
+      this.#emitter.emit("error", { code: "unsupported", message });
+      throw new Error(message);
+    }
+
     try {
-      await this.#room.connect(url, token);
+      // The development token server issues join credentials without a
+      // backend of ours. Insecure by design; see .env.example.
+      const credentials = await TokenSource.developmentTokenServer(
+        tokenServerId,
+      ).fetch({
+        roomName: channel,
+        participantName: displayName,
+        // Two clients sharing an identity evict each other, so a second tab
+        // would silently kick the first. Make every session distinct.
+        participantIdentity: `${displayName}#${crypto.randomUUID().slice(0, 8)}`,
+      });
+
+      await this.#room.connect(
+        credentials.serverUrl,
+        credentials.participantToken,
+      );
       this.#publishSnapshot();
     } catch (cause) {
       this.#emitter.emit("error", {

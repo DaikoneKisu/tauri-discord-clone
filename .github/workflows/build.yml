@@ -1,8 +1,10 @@
 name: build
 
 on:
+  # Only main on push. Topic branches are validated through pull_request, so
+  # pushing a branch that also targets main does not run the matrix twice.
   push:
-    branches: [main, "DaikoneKisu/**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
